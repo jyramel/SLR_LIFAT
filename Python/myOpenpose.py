@@ -49,7 +49,7 @@ def set_params(face = False, body = 1, hand = True, hand_detector = 0,
     
     if hand_opti :
         params["hand_scale_number"] = 6
-        params["hand_scale_range"] = 0.4
+        #params["hand_scale_range"] = float(0.4)
     
     # Save results in JSON format 
     if write_json :
@@ -64,6 +64,37 @@ def set_params(face = False, body = 1, hand = True, hand_detector = 0,
     
     return params
 
+def opVideo(videopath, outputpath, params):
+    """ Ecrit une vidéo au chemin outputpath (format .avi nécessaire) à partir de la vidéo videopath"""
+    opWrapper = init_openpose(params)
+
+    vs = cv2.VideoCapture(videopath)
+    (ret, frame) = vs.read()
+    print((int(frame.shape[1]), int(frame.shape[0])))
+    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+    fps, length = int(vs.get(cv2.CAP_PROP_FPS)), int(vs.get(cv2.CAP_PROP_FRAME_COUNT))
+    writer = None 
+
+    for i in tqdm(range(length)):
+        (ret, frame) = vs.read()
+        if not ret:
+            break
+        datum = opFrame_run(frame, params, opWrapper)
+        frame = datum.cvOutputData
+        try :
+            scoreL = np.mean(datum.handKeypoints[0][:,:,2])
+            scoreR = np.mean(datum.handKeypoints[1][:,:,2])
+        except:
+            scoreL = 0
+            scoreR = 0
+        text = "LH : {0:.2f}".format(scoreL) + " ## RH : {0:.2f}".format(scoreR)
+        frame = cv2.putText(frame, text, (5, frame.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 0, 255), 3)
+        if writer == None :
+            writer = cv2.VideoWriter(outputpath, fourcc, fps, (int(frame.shape[1]), int(frame.shape[0])))
+        writer.write(frame)
+
+    writer.release()
+    vs.release()
 
 def init_openpose(params):
     """Initialise openpose et retourne le opWrapper"""
