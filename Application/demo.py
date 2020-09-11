@@ -111,9 +111,9 @@ class BarProgressTimer(QThread):
         cnt = 0
         start = time.time()
         while cnt < self.limitTime * 100 :
+            self.pbar.setFormat(str(self.car[cnt//100]))
             cnt = int(100 * (time.time() - start))
-            self.pbar.setFormat(str(self.car[cnt//100])) 
-            self.change_value.emit(cnt)
+	    self.change_value.emit(cnt)
         self.pbar.setFormat("0") 
         if self.lim == 1 :
             return
