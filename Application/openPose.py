@@ -1,104 +1,59 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Aug 27 14:46:08 2020
 
-@author: natha
+@author: conte
 """
-
-
-
-import pyopenpose as op
-from PyQt5.QtWidgets import QProgressBar
 import cv2
-from PyQt5.QtCore import pyqtSignal, Qt, QThread
+import pyopenpose as op
 
 
-class OpenPoseThread(QThread):
-    change_value = pyqtSignal(int)
-
-    def __init__(self, filename):
-        QThread.__init__(self)
-        self.pbar = QProgressBar()
-        self.pbar.setGeometry(0, 0, 300, 50)
-        self.pbar.setAlignment(Qt.AlignCenter)
-
-        self.filename = filename
-        self.cap = cv2.VideoCapture(self.filename)
-
-        fps = self.cap.get(cv2.CAP_PROP_FPS)
-        length = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
-
-        if length:
-            self.pbar.setMaximum(int(length))
-        else:
-            self.pbar.setMaximum(int(fps * 4))
-
-        self.opWrapper = initOpenpose(set_params(tracking=0))
-        self.keypoints = []
-        self.frames = []
-        self.writer = None
-
-    def run(self):
-        skipParameter = 2
-        sizeReduction = 2
-        cnt = 0
-        ret, cv_img = self.cap.read()
+def openpose_function(window, progress_bar, progress_text, video_image, states, list_frame_input, list_frame_output):
+    opWrapper = initOpenpose(set_params(tracking=0))
+    keypoints = []
+    list_frame_output.clear()
+    total_images = len(list_frame_input)
+    skipParameter = 3
+    sizeReduction = 2
+    cnt = 0
+    datum = None
+    for frame in list_frame_input:
+        event, values = window.read(timeout=20)
+        if event in ('Exit', None):
+            exit(0)
+        if event == 'reset':
+            states.reset = True
+            return
+        imgbytes=cv2.imencode('.png', frame)[1].tobytes()
+        video_image.update(data=imgbytes)
         if sizeReduction!=1:
-            cv_img = cv2.resize(cv_img,(int(cv_img.shape[1]/sizeReduction),int(cv_img.shape[0]/sizeReduction)))
-		
-        while ret :
-            if cnt%skipParameter==0:
-               self.openPoseTraitement(cv_img)
-               self.change_value.emit(cnt)
-            cnt += 1
-            ret, cv_img = self.cap.read()
-            if ret == True:
-               if sizeReduction!=1:
-                   cv_img = cv2.resize(cv_img,(int(cv_img.shape[1]/sizeReduction),int(cv_img.shape[0]/sizeReduction)))
-			
-        self.saveFrames()
-        return
+            cv_img = cv2.resize(frame,(int(frame.shape[1]/sizeReduction),int(frame.shape[0]/sizeReduction)))
+        if cnt%skipParameter==0:
+            datum = opFrameRun(cv_img, opWrapper)
+            keypoints.append(datum)
+            if sizeReduction!=1:
+                fr_save = cv2.resize(datum.cvOutputData, (frame.shape[1],frame.shape[0]))
+                list_frame_output.append(fr_save)
+            else:
+                list_frame_output.append(datum.cvOutputData)
+        cnt += 1
+        percent = (cnt/total_images)*100
+        progress_bar.update_bar(percent)
+        progress_text.update('skeleton processing {:3.1f}%'.format(percent))
+    return keypoints
 
-    def openPoseTraitement(self, frame):
-        # Create writer if not exist
-        if not self.writer:
-            H, W = frame.shape[0:2]
-            fps = self.cap.get(cv2.CAP_PROP_FPS)
-            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-            self.writer = cv2.VideoWriter("test2.avi", fourcc, fps,
-                                      (int(W), int(H)), True)
-        # save keypoints and modified frame
-        datum = self.opFrameRun(frame)
-        self.keypoints.append(datum)
-        self.frames.append(datum.cvOutputData)
-
-    def getKeypoints(self):
-        return self.keypoints
-
-    def saveFrames(self):
-        for frame in self.frames :
-            self.writer.write(frame)
-        self.writer.release()
-
-    def setProgressVal(self, val):
-        self.pbar.setValue(val)
-
-    def stop(self):
-        self.exit(0)
-
-    def opFrameRun(self, frame):
-        """Applique openpose sur une image et retourne l'object datum contenant :
-            - l'image avec le squelette
-            - les keypoints en numpy
-        """
-        datum = op.Datum()
-        datum.cvInputData = frame
-        self.opWrapper.emplaceAndPop([datum])
-        return datum
+def opFrameRun(frame, opWrapper):
+    """Applique openpose sur une image et retourne l'object datum contenant :
+    	- l'image avec le squelette
+    	- les keypoints en numpy
+    """
+    datum = op.Datum()
+    datum.cvInputData = frame
+    opWrapper.emplaceAndPop([datum])
+    return datum
 
 
-def set_params(face=False, body=1, hand=True, hand_detector=0,
-               hand_opti=False, nb_people_max=1, model_folder="openpose/models", tracking=-1):
+def set_params(face=False, body=1, hand=True, hand_detector=0, hand_opti=False, 
+			   nb_people_max=1, model_folder="openpose/models", tracking=-1):
     """
     face : bool, calcul des keypoints du visage
     body : bool, calcul des keypoints du corps

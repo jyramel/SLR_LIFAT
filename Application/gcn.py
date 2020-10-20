@@ -1,89 +1,89 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Aug 27 16:19:19 2020
-
-@author: natha
-"""
-
-from PyQt5.QtWidgets import QProgressBar
-from PyQt5.QtCore import pyqtSignal, Qt, QThread
-from GatedGCN.traitementVideo import keypoints_to_json, dict_to_json
+import cv2
 from GatedGCN.builder import STgraph
 from GatedGCN.loader import load
-from GatedGCN.gated_gcn_net import GatedGCNNet
 from GatedGCN.utils import init_params
-
-import torch
+from GatedGCN.gated_gcn_net import GatedGCNNet
+import os
+import json
 import glob
+import torch
 from scipy.special import softmax
 
-class GCNThread(QThread):
-    change_value = pyqtSignal(int)
-    
-    def __init__(self, keypoints):
-        QThread.__init__(self)
-        self.pbar = QProgressBar()
-        self.pbar.setGeometry(0, 0, 300, 50)
-        self.pbar.setAlignment(Qt.AlignCenter) 
-        self.length = len(keypoints)
-        self.pbar.setMaximum(self.length)
-        self.keypoints = keypoints
-        self.json = []
-        self.word = "Une erreur est survenue, veuillez recommencer svp."
-        self.labels = ["AVANT", "LIVRE", "BONBON", "CHAISE", "VÊTEMENTS", "ORDINATEUR", "BOIRE", "ALLER (go)", "QUI ?"]
-    
-    def run(self):
-        cnt = 0
-        for datum in self.keypoints:
-            self.datum2json(cnt, datum)
-            self.change_value.emit(cnt)
-            cnt+=1
+labels = ["AVANT", "LIVRE", "BONBON", "CHAISE", "VETEMENTS", "ORDINATEUR", "BOIRE", "ALLEZ (go)", "QUI ?"]
 
-        inputClassifier, object2class = self.loadData()
-        model, device = self.initGCN(object2class)
-        self.classification(model, device, inputClassifier)
-        return
+def classification_function(window, progress_bar, progress_text, video_image, list_frame_result, keypoints):
+    total_images = len(list_frame_result)
+    cnt = 0
+    json_data = []
+    for x in range(total_images):
+        frame = list_frame_result[x]
+        keypoint = keypoints[x]
+        event, values = window.read(timeout=20)
+        if event in ('Exit', None):
+            exit(0)
+        if event == 'reset':
+            states.reset = True
+            return
+        imgbytes=cv2.imencode('.png', frame)[1].tobytes()
+        video_image.update(data=imgbytes)
+        datum2json(cnt, keypoint, json_data)
+        cnt += 1
+        percent = (cnt/total_images)*100
+        progress_bar.update_bar(percent)
+        progress_text.update('sign classification {:3.1f}%'.format(percent))
+	
+    inputClassifier, object2class = loadData(json_data)
+    model, device = initGCN(object2class)
+    word, top3, prob = classification(model, device, inputClassifier)
+    return word, top3, prob
 
-    def classification(self, model, device, inputClassifier):
-        for iter, (batch_graphs, batch_labels) in enumerate(inputClassifier):
-            batch_x = batch_graphs.ndata['feat'].to(device)  # num x feat
-            batch_e = batch_graphs.edata['feat'].to(device)
-            scores = model.forward(batch_graphs, batch_x, batch_e)
-        indice = scores.detach().argmax(dim=1)
-        self.word = self.labels[indice]
-        self.top3 = scores.topk(3)[1].squeeze().cpu()
-        self.prob = softmax(scores.detach().cpu().numpy())
+def classification(model, device, inputClassifier):
+	for iter, (batch_graphs, batch_labels) in enumerate(inputClassifier):
+		batch_x = batch_graphs.ndata['feat'].to(device)  # num x feat
+		batch_e = batch_graphs.edata['feat'].to(device)
+		scores = model.forward(batch_graphs, batch_x, batch_e)
+	indice = scores.detach().argmax(dim=1)
+	word = labels[indice]
+	top3 = scores.topk(3)[1].squeeze().cpu()
+	prob = softmax(scores.detach().cpu().numpy())
+	return word, top3, prob
 
+def initGCN(object2class):
+    params, _ = init_params(object2class, 9)
+    model = GatedGCNNet(params)
+    model.load_state_dict(torch.load("GatedGCN/modelSaved.model"))
+    device = params["device"]
+    model.to(device)
+    model.eval()
+    return model, device
 
-    def initGCN(self, object2class):
-        params, _ = init_params(object2class, 9)
-        model = GatedGCNNet(params)
-        model.load_state_dict(torch.load("GatedGCN/modelSaved.model"))
-        device = params["device"]
-        model.to(device)
-        model.eval()
-        return model, device
+def loadData(json_data):
+	filejsonname = dict_to_json(json_data, 1, 1)
+	jsonlist = glob.glob(filejsonname)
+	object2class = STgraph(jsonlist)
+	inputClassifier = load(object2class)
+	return inputClassifier, object2class
 
-    def loadData(self):
-        dict_to_json(self.json, 1, 1)
-        object2class = STgraph(glob.glob("*.json"))
-        inputClassifier = load(object2class)
-        return inputClassifier, object2class
+def dict_to_json(videoJson, id_gloss, id_instance):
+    """Ecrit en format JSON le contenu du dictionnaire videoJson sous le nom {id_gloss}_{id_instance}.json"""
+    path = ""
+    name = "{}_".format(id_gloss) + "{}.json".format(id_instance)
+    filejsonname = os.path.join(path, name)
+    fout = open(filejsonname, 'w')
+    json.dump(videoJson , fout)
+    return filejsonname
 
-    def setProgressVal(self, val):
-        self.pbar.setValue(val)
-    
-    def getWord(self):
-        return self.word
-
-    def getTop3(self):
-        text = "Scores des 3 meilleurs mots :\n"
-        for indice in self.top3 :
-            text += "   - " + self.labels[indice] + " : {:.2f} % \n".format(100 * self.prob[0,indice])
-        return text
-    
-    def stop(self):
-        self.exit(0)
-
-    def datum2json(self, cnt, datum):
-        self.json.append({"frame" : cnt, "keypoints" : keypoints_to_json(datum)})
+def datum2json(cnt, datum, json_data):
+    json_data.append({"frame" : cnt, "keypoints" : keypoints_to_json(datum)})
+	
+def keypoints_to_json(datum):
+    """Enregistre les keypoints obtenues avec Openpose sous une architecture JSON"""
+    jsonDict = dict()
+    jsonDict["pose_keypoints_2d"] = datum.poseKeypoints.tolist()
+    if datum.faceKeypoints.size > 0 :
+        jsonDict["face_keypoints_2d"] = []
+    else : 
+        jsonDict["face_keypoints_2d"] = datum.faceKeypoints.tolist()
+    jsonDict["hand_left_keypoints_2d"] = datum.handKeypoints[0].tolist()
+    jsonDict["hand_right_keypoints_2d"] = datum.handKeypoints[1].tolist()
+    return jsonDict
