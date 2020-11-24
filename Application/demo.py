@@ -4,6 +4,7 @@ import time
 import sys
 import os
 
+# Change these variables to point to the correct folder of openpose library
 sys.path.append('C:/openpose-master/build/python/openpose/Release')
 os.environ['PATH'] = os.environ['PATH'] + ';' + 'C:/openpose-master/build/x64/Release;' + 'C:/openpose-master/build/bin;'
 
