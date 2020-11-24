@@ -80,7 +80,7 @@ def keypoints_to_json(datum):
     """Enregistre les keypoints obtenues avec Openpose sous une architecture JSON"""
     jsonDict = dict()
     jsonDict["pose_keypoints_2d"] = datum.poseKeypoints.tolist()
-    if datum.faceKeypoints.size > 0 :
+    if datum.faceKeypoints == None: #datum.faceKeypoints.size > 0 :
         jsonDict["face_keypoints_2d"] = []
     else : 
         jsonDict["face_keypoints_2d"] = datum.faceKeypoints.tolist()

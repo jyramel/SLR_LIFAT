@@ -48,7 +48,7 @@ def opFrameRun(frame, opWrapper):
     """
     datum = op.Datum()
     datum.cvInputData = frame
-    opWrapper.emplaceAndPop([datum])
+    opWrapper.emplaceAndPop(op.VectorDatum([datum]))
     return datum
 
 
