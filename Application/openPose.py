@@ -48,7 +48,7 @@ def opFrameRun(frame, opWrapper):
     """
     datum = op.Datum()
     datum.cvInputData = frame
-    #old version of pyopenpose
+    #old version of pyopenpose library
     #opWrapper.emplaceAndPop([datum])
 	
     #new version of pyopenpose library
