@@ -48,6 +48,10 @@ def opFrameRun(frame, opWrapper):
     """
     datum = op.Datum()
     datum.cvInputData = frame
+    #old version of pyopenpose
+    #opWrapper.emplaceAndPop([datum])
+	
+    #new version of pyopenpose library
     opWrapper.emplaceAndPop(op.VectorDatum([datum]))
     return datum
 
